@@ -4,54 +4,141 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gold Worth Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #fff8e1; padding: 20px; }
+    h1 { color: #d4af37; }
+    table { margin: 20px auto; border-collapse: collapse; width: 90%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    th, td { padding: 10px; border-bottom: 1px solid #eee; }
+    th { background-color: #fff3cd; }
+    canvas { margin: 25px auto; max-width: 95%; }
+    button { background: #d4af37; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 16px; }
+  </style>
 </head>
-<body style="font-family:sans-serif;text-align:center;padding:20px;">
+<body>
   <h1>💰 Gold Worth Tracker</h1>
   <p id="usd"></p>
   <p id="egp"></p>
   <button onclick="fetchPrices()">Refresh Prices</button>
 
-<script>
-const goldItems = [
-  { weight: 5, karat: 24 },
-  { weight: 5, karat: 24 },
-  { weight: 1, karat: 24 },
-  { weight: 1, karat: 24 },
-  { weight: 4, karat: 21 },
-  { weight: 7.61, karat: 18 },
-  { weight: 1.8, karat: 18 }
-];
+  <h2>Breakdown</h2>
+  <table id="breakdown">
+    <thead>
+      <tr><th>Weight (g)</th><th>Karat</th><th>Value (USD)</th><th>Value (EGP)</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-async function fetchPrices() {
-  document.getElementById('usd').innerText = 'Loading...';
-  try {
-    // New working gold API (per ounce in USD)
-    const goldRes = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
-    const goldData = await goldRes.json();
-    const goldUSDPerOunce = goldData.items[0].xauPrice;
-    const goldUSDPerGram = goldUSDPerOunce / 31.1035;
+  <canvas id="pieChart"></canvas>
+  <canvas id="lineChart"></canvas>
 
-    // Working currency API
-    const forexRes = await fetch('https://open.er-api.com/v6/latest/USD');
-    const forexData = await forexRes.json();
-    const usdToEGP = forexData.rates.EGP;
+  <script>
+    const goldItems = [
+      { weight: 5, karat: 24 },
+      { weight: 5, karat: 24 },
+      { weight: 1, karat: 24 },
+      { weight: 1, karat: 24 },
+      { weight: 4, karat: 21 },
+      { weight: 7.61, karat: 18 },
+      { weight: 1.8, karat: 18 }
+    ];
 
-    const totalUSD = goldItems.reduce(
-      (sum, i) => sum + i.weight * goldUSDPerGram * (i.karat / 24),
-      0
-    );
-    const totalEGP = totalUSD * usdToEGP;
+    let priceHistory = [];
 
-    document.getElementById('usd').innerText = `Total: $${totalUSD.toFixed(2)} USD`;
-    document.getElementById('egp').innerText = `≈ ${totalEGP.toFixed(2)} EGP`;
-  } catch (err) {
-    document.getElementById('usd').innerText = 'Error fetching data 😞';
-    console.error(err);
-  }
-}
+    async function fetchPrices() {
+      document.getElementById('usd').innerText = 'Loading...';
+      try {
+        // Live gold price (USD/oz)
+        const goldRes = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
+        const goldData = await goldRes.json();
+        const goldUSDPerOunce = goldData.items[0].xauPrice;
+        const goldUSDPerGram = goldUSDPerOunce / 31.1035;
 
-fetchPrices();
-</script>
+        // USD to EGP
+        const forexRes = await fetch('https://open.er-api.com/v6/latest/USD');
+        const forexData = await forexRes.json();
+        const usdToEGP = forexData.rates.EGP;
 
+        // Calculate totals
+        let totalUSD = 0;
+        const tbody = document.querySelector("#breakdown tbody");
+        tbody.innerHTML = "";
+
+        goldItems.forEach(item => {
+          const purity = item.karat / 24;
+          const valueUSD = item.weight * goldUSDPerGram * purity;
+          const valueEGP = valueUSD * usdToEGP;
+          totalUSD += valueUSD;
+
+          const row = `<tr>
+            <td>${item.weight}</td>
+            <td>${item.karat}K</td>
+            <td>$${valueUSD.toFixed(2)}</td>
+            <td>${valueEGP.toFixed(2)} EGP</td>
+          </tr>`;
+          tbody.insertAdjacentHTML("beforeend", row);
+        });
+
+        const totalEGP = totalUSD * usdToEGP;
+        document.getElementById('usd').innerText = `Total: $${totalUSD.toFixed(2)} USD`;
+        document.getElementById('egp').innerText = `≈ ${totalEGP.toFixed(2)} EGP`;
+
+        // Save price history
+        const timestamp = new Date().toLocaleTimeString();
+        priceHistory.push({ time: timestamp, price: goldUSDPerGram });
+        if (priceHistory.length > 10) priceHistory.shift();
+
+        drawPieChart();
+        drawLineChart();
+
+      } catch (err) {
+        document.getElementById('usd').innerText = 'Error fetching data 😞';
+        console.error(err);
+      }
+    }
+
+    function drawPieChart() {
+      const ctx = document.getElementById('pieChart').getContext('2d');
+      const values = goldItems.map(i => i.weight * (i.karat / 24));
+      const labels = goldItems.map((i, idx) => `${i.weight}g ${i.karat}K`);
+      if (window.pie) window.pie.destroy();
+      window.pie = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: ['#d4af37', '#c0a060', '#ffd700', '#e6be8a', '#f8d568', '#ffdf00', '#b29500']
+          }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+      });
+    }
+
+    function drawLineChart() {
+      const ctx = document.getElementById('lineChart').getContext('2d');
+      if (window.line) window.line.destroy();
+      window.line = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: priceHistory.map(p => p.time),
+          datasets: [{
+            label: 'Gold Price (USD/g)',
+            data: priceHistory.map(p => p.price),
+            borderColor: '#d4af37',
+            fill: false,
+            tension: 0.3
+          }]
+        },
+        options: {
+          scales: { y: { beginAtZero: false } },
+          plugins: { legend: { display: true, position: 'bottom' } }
+        }
+      });
+    }
+
+    fetchPrices();
+    setInterval(fetchPrices, 60000); // update every minute
+  </script>
 </body>
 </html>
