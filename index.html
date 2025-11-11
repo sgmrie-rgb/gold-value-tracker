@@ -11,39 +11,47 @@
   <p id="egp"></p>
   <button onclick="fetchPrices()">Refresh Prices</button>
 
-  <script>
-    const goldItems = [
-      { weight: 5, karat: 24 },
-      { weight: 5, karat: 24 },
-      { weight: 1, karat: 24 },
-      { weight: 1, karat: 24 },
-      { weight: 4, karat: 21 },
-      { weight: 7.61, karat: 18 },
-      { weight: 1.8, karat: 18 }
-    ];
+<script>
+const goldItems = [
+  { weight: 5, karat: 24 },
+  { weight: 5, karat: 24 },
+  { weight: 1, karat: 24 },
+  { weight: 1, karat: 24 },
+  { weight: 4, karat: 21 },
+  { weight: 7.61, karat: 18 },
+  { weight: 1.8, karat: 18 }
+];
 
-    async function fetchPrices() {
-      document.getElementById('usd').innerText = 'Loading...';
-      try {
-        const res = await fetch('https://api.metals.live/v1/spot');
-        const data = await res.json();
-        const goldUSDPerOunce = data.find(i => i.gold)?.gold;
-        const goldUSDPerGram = goldUSDPerOunce / 31.1035;
+async function fetchPrices() {
+  document.getElementById('usd').innerText = 'Loading...';
+  try {
+    // New working gold API (per ounce in USD)
+    const goldRes = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
+    const goldData = await goldRes.json();
+    const goldUSDPerOunce = goldData.items[0].xauPrice;
+    const goldUSDPerGram = goldUSDPerOunce / 31.1035;
 
-        const forex = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=EGP');
-        const rate = (await forex.json()).rates.EGP;
+    // Working currency API
+    const forexRes = await fetch('https://open.er-api.com/v6/latest/USD');
+    const forexData = await forexRes.json();
+    const usdToEGP = forexData.rates.EGP;
 
-        const totalUSD = goldItems.reduce((sum, i) => sum + i.weight * goldUSDPerGram * (i.karat / 24), 0);
-        const totalEGP = totalUSD * rate;
+    const totalUSD = goldItems.reduce(
+      (sum, i) => sum + i.weight * goldUSDPerGram * (i.karat / 24),
+      0
+    );
+    const totalEGP = totalUSD * usdToEGP;
 
-        document.getElementById('usd').innerText = `Total: $${totalUSD.toFixed(2)} USD`;
-        document.getElementById('egp').innerText = `≈ ${totalEGP.toFixed(2)} EGP`;
-      } catch (err) {
-        document.getElementById('usd').innerText = 'Error fetching data';
-      }
-    }
+    document.getElementById('usd').innerText = `Total: $${totalUSD.toFixed(2)} USD`;
+    document.getElementById('egp').innerText = `≈ ${totalEGP.toFixed(2)} EGP`;
+  } catch (err) {
+    document.getElementById('usd').innerText = 'Error fetching data 😞';
+    console.error(err);
+  }
+}
 
-    fetchPrices();
-  </script>
+fetchPrices();
+</script>
+
 </body>
 </html>
